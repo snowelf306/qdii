@@ -797,128 +797,126 @@
         }
 
         // ========== 主要市场指数展示 ==========
-        // ========== 指数代码映射（东方财富 secid） ==========
-        const INDEX_META = {
-            'us1': { container: 'indexGridUS1', items: [
-                { name: '标普500信息科技', secid: '100.S5INFT' },
-                { name: '纳斯达克科技100', secid: '100.NDXT' },
-            ]},
-            'us2': { container: 'indexGridUS2', items: [
-                { name: '标普500',    secid: '100.INX' },
-                { name: '纳斯达克100', secid: '100.NDX' },
-                { name: '道琼斯工业',  secid: '100.DJI' },
-            ]},
-            'ap1': { container: 'indexGridAP1', items: [
-                { name: '上证指数', secid: '1.000001', market: '🇨🇳' },
-            ]},
-            'ap2': { container: 'indexGridAP2', items: [
-                { name: '沪深300', secid: '1.000300', market: '🇨🇳' },
-                { name: '科创50',  secid: '1.000688', market: '🇨🇳' },
-            ]},
-            'ap3': { container: 'indexGridAP3', items: [
-                { name: '日经225',   secid: '100.N225', market: '🇯🇵' },
-                { name: '韩国KOSPI', secid: '100.KS11', market: '🇰🇷' },
-            ]},
+        // ========== Yahoo Finance 数据源 ==========
+        // Yahoo Finance v8 chart API (支持 CORS，可浏览器直接调用)
+        const YAHOO_BASE = 'https://query1.finance.yahoo.com/v8/finance/chart';
+
+        // 指数 -> Yahoo Finance 符号映射
+        const YAHOO_MAP = {
+            'us1_g1': '^SP500-45',     // 标普500信息科技
+            'us1_g2': '^NDXT',         // 纳斯达克科技100
+            'us2_g1': '^GSPC',         // 标普500
+            'us2_g2': '^NDX',          // 纳斯达克100
+            'us2_g3': '^DJI',          // 道琼斯工业
+            'ap1_g1': '000001.SS',     // 上证指数
+            'ap2_g1': '000300.SS',     // 沪深300
+            'ap2_g2': '000688.SS',     // 科创50
+            'ap3_g1': '^N225',         // 日经225
+            'ap3_g2': '^KS11',         // 韩国KOSPI
         };
 
-        // 缓存：最近一次成功的数据（含默认初始值，避免首次加载空白）
-        let lastData = {
-            '100.S5INFT': { price: 4532.18, pct: 0.35 },
-            '100.NDXT':   { price: 18960.45, pct: 0.45 },
-            '100.INX':    { price: 5842.36, pct: 0.25 },
-            '100.NDX':    { price: 20563.78, pct: 0.12 },
-            '100.DJI':    { price: 42158.50, pct: -0.04 },
-            '1.000001':   { price: 3048.50, pct: 0.47 },
-            '1.000300':   { price: 3580.45, pct: 0.53 },
-            '1.000688':   { price: 958.60, pct: 0.94 },
-            '100.N225':   { price: 38450.30, pct: 0.55 },
-            '100.KS11':   { price: 2712.60, pct: -0.31 },
+        // 分组元信息（key 与上面一致）
+        const GROUPS = {
+            us1: { container: 'indexGridUS1', keys: ['us1_g1', 'us1_g2'],
+                   names: ['标普500信息科技', '纳斯达克科技100'], markets: [] },
+            us2: { container: 'indexGridUS2', keys: ['us2_g1', 'us2_g2', 'us2_g3'],
+                   names: ['标普500', '纳斯达克100', '道琼斯工业'], markets: [] },
+            ap1: { container: 'indexGridAP1', keys: ['ap1_g1'],
+                   names: ['上证指数'], markets: ['🇨🇳'] },
+            ap2: { container: 'indexGridAP2', keys: ['ap2_g1', 'ap2_g2'],
+                   names: ['沪深300', '科创50'], markets: ['🇨🇳', '🇨🇳'] },
+            ap3: { container: 'indexGridAP3', keys: ['ap3_g1', 'ap3_g2'],
+                   names: ['日经225', '韩国KOSPI'], markets: ['🇯🇵', '🇰🇷'] },
         };
 
-        function buildCardHTML(name, price, pct, market) {
-            const isUp = pct >= 0;
-            const sign = isUp ? '+' : '';
-            return `
-                <div class="i-name">${name}</div>
-                <div class="i-price">${price.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
-                <div class="i-change"><span class="i-pct">${sign}${pct.toFixed(2)}%</span></div>
-                <div class="i-market">${market || '🇺🇸 美国'}</div>
-            `;
-        }
+        // 缓存（含初始默认值）
+        let cache = {
+            'us1_g1': { price: 4532.18, pct: 0.35 },
+            'us1_g2': { price: 18960.45, pct: 0.45 },
+            'us2_g1': { price: 5842.36, pct: 0.25 },
+            'us2_g2': { price: 20563.78, pct: 0.12 },
+            'us2_g3': { price: 42158.50, pct: -0.04 },
+            'ap1_g1': { price: 3048.50, pct: 0.47 },
+            'ap2_g1': { price: 3580.45, pct: 0.53 },
+            'ap2_g2': { price: 958.60,  pct: 0.94 },
+            'ap3_g1': { price: 38450.30, pct: 0.55 },
+            'ap3_g2': { price: 2712.60, pct: -0.31 },
+        };
 
-        function renderGroup(groupKey, dataMap) {
-            const meta = INDEX_META[groupKey];
-            const grid = document.getElementById(meta.container);
-            grid.innerHTML = '';
-            meta.items.forEach(item => {
-                const info = dataMap[item.secid];
-                const price = info ? info.price : (lastData[item.secid] || {}).price || 0;
-                const pct   = info ? info.pct   : (lastData[item.secid] || {}).pct   || 0;
-                const isUp = pct >= 0;
-                const card = document.createElement('div');
-                card.className = `index-card ${isUp ? 'up' : 'down'}`;
-                card.innerHTML = buildCardHTML(item.name, price, pct, item.market);
-                grid.appendChild(card);
+        function renderGrid(dataMap) {
+            Object.values(GROUPS).forEach(g => {
+                const grid = document.getElementById(g.container);
+                grid.innerHTML = '';
+                g.keys.forEach((key, i) => {
+                    const d = dataMap[key] || cache[key] || { price: 0, pct: 0 };
+                    const isUp = d.pct >= 0;
+                    const card = document.createElement('div');
+                    card.className = `index-card ${isUp ? 'up' : 'down'}`;
+                    card.innerHTML = `
+                        <div class="i-name">${g.names[i]}</div>
+                        <div class="i-price">${d.price.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+                        <div class="i-change"><span class="i-pct">${isUp ? '+' : ''}${d.pct.toFixed(2)}%</span></div>
+                        <div class="i-market">${g.markets[i] || '🇺🇸 美国'}</div>
+                    `;
+                    grid.appendChild(card);
+                });
             });
         }
 
-        function renderAll(dataMap) {
-            renderGroup('us1', dataMap);
-            renderGroup('us2', dataMap);
-            renderGroup('ap1', dataMap);
-            renderGroup('ap2', dataMap);
-            renderGroup('ap3', dataMap);
+        // 从 Yahoo Finance 获取实时数据
+        async function fetchYahoo() {
+            const entries = Object.entries(YAHOO_MAP);
+            // 并行请求所有指数
+            const results = await Promise.allSettled(
+                entries.map(([key, symbol]) =>
+                    fetch(`${YAHOO_BASE}/${encodeURIComponent(symbol)}?interval=1d&range=1d`)
+                        .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+                        .then(json => {
+                            const meta = json?.chart?.result?.[0]?.meta;
+                            if (meta && meta.regularMarketPrice != null && meta.chartPreviousClose != null) {
+                                const price = meta.regularMarketPrice;
+                                const pct = ((price / meta.chartPreviousClose) - 1) * 100;
+                                return { key, price, pct: parseFloat(pct.toFixed(2)) };
+                            }
+                            throw new Error('no meta');
+                        })
+                )
+            );
+            const map = {};
+            results.forEach(r => {
+                if (r.status === 'fulfilled' && r.value) {
+                    map[r.value.key] = { price: r.value.price, pct: r.value.pct };
+                }
+            });
+            if (Object.keys(map).length > 0) {
+                Object.assign(cache, map);
+            }
+            return map;
         }
 
-        // 从东方财富 API 获取实时数据
-        function fetchIndexData() {
-            const secids = Object.values(INDEX_META).flatMap(g => g.items.map(i => i.secid)).join(',');
-
-            return fetch(`https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&secids=${secids}&fields=f2,f3,f4,f12,f14`)
-                .then(r => r.json())
-                .then(json => {
-                    const map = {};
-                    const list = json?.data?.diff || [];
-                    list.forEach(item => {
-                        const secid = item.f12;
-                        const price = item.f2;
-                        const pct   = item.f3;
-                        if (secid && price != null && pct != null) {
-                            map[secid] = { price, pct };
-                        }
-                    });
-                    // 更新缓存
-                    Object.assign(lastData, map);
-                    renderAll(map);
-                    return map;
-                });
-        }
-
-        function refreshAll() {
+        async function refreshAll() {
             const btn = document.getElementById('refreshIndexBtn');
             btn.textContent = '⏳ 加载中...';
             btn.disabled = true;
 
-            // 尝试从 API 获取，失败则使用缓存或空数据
-            fetchIndexData()
-                .catch(() => {
-                    // 如果连不上 API，用缓存（如果有）或报错
-                    if (Object.keys(lastData).length > 0) {
-                        renderAll(lastData);
-                    } else {
-                        alert('获取实时数据失败，请检查网络或稍后重试');
-                    }
-                })
-                .finally(() => {
-                    btn.textContent = '🔄 刷新';
-                    btn.disabled = false;
-                });
+            try {
+                const data = await fetchYahoo();
+                renderGrid(data);
+                if (Object.keys(data).length > 0) {
+                    btn.textContent = '✅ 已更新';
+                    setTimeout(() => { btn.textContent = '🔄 刷新'; }, 2000);
+                } else {
+                    renderGrid(cache);
+                }
+            } catch {
+                renderGrid(cache);
+            } finally {
+                btn.textContent = '🔄 刷新';
+                btn.disabled = false;
+            }
         }
 
-        // 页面加载：先尝试实时数据，失败则显示提示占位
-        document.addEventListener('DOMContentLoaded', () => {
-            refreshAll();
-        });
+        document.addEventListener('DOMContentLoaded', () => renderGrid(cache));
         document.getElementById('refreshIndexBtn').addEventListener('click', refreshAll);
     </script>
 </div>
