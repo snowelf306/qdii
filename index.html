@@ -797,25 +797,25 @@
         }
 
         // ========== 主要市场指数展示 ==========
-        // ========== Yahoo Finance 数据源 ==========
-        // Yahoo Finance v8 chart API (支持 CORS，可浏览器直接调用)
-        const YAHOO_BASE = 'https://query1.finance.yahoo.com/v8/finance/chart';
+        // ========== Google Finance (JSONP) 数据源 ==========
+        // Google Finance 的 info 接口返回 JSONP，通过 script 标签加载绕过 CORS
 
-        // 指数 -> Yahoo Finance 符号映射
-        const YAHOO_MAP = {
-            'us1_g1': '^SP500-45',     // 标普500信息科技
-            'us1_g2': '^NDXT',         // 纳斯达克科技100
-            'us2_g1': '^GSPC',         // 标普500
-            'us2_g2': '^NDX',          // 纳斯达克100
-            'us2_g3': '^DJI',          // 道琼斯工业
-            'ap1_g1': '000001.SS',     // 上证指数
-            'ap2_g1': '000300.SS',     // 沪深300
-            'ap2_g2': '000688.SS',     // 科创50
-            'ap3_g1': '^N225',         // 日经225
-            'ap3_g2': '^KS11',         // 韩国KOSPI
+        // 指数 -> Google Finance 符号映射
+        // Google 格式: EXCHANGE:SYMBOL
+        const GOOGLE_MAP = {
+            'us1_g1': 'INDEXSP:.INX',            // 标普500信息科技 — 用标普500近似
+            'us1_g2': 'INDEXNAS:.NDX',           // 纳斯达克科技100 — 用纳斯达克100近似
+            'us2_g1': 'INDEXSP:.INX',            // 标普500
+            'us2_g2': 'INDEXNAS:.NDX',           // 纳斯达克100
+            'us2_g3': 'INDEXDJX:.DJI',           // 道琼斯工业
+            'ap1_g1': 'SHA:000001',              // 上证指数
+            'ap2_g1': 'SHA:000300',              // 沪深300
+            'ap2_g2': 'SHA:000688',              // 科创50
+            'ap3_g1': 'INDEXNIKKEI:.N225',       // 日经225
+            'ap3_g2': 'INDEXKOSPI:.KS11',        // 韩国KOSPI
         };
 
-        // 分组元信息（key 与上面一致）
+        // 分组元信息
         const GROUPS = {
             us1: { container: 'indexGridUS1', keys: ['us1_g1', 'us1_g2'],
                    names: ['标普500信息科技', '纳斯达克科技100'], markets: [] },
@@ -829,7 +829,7 @@
                    names: ['日经225', '韩国KOSPI'], markets: ['🇯🇵', '🇰🇷'] },
         };
 
-        // 缓存（含初始默认值）
+        // 缓存（含初始默认值，页面加载立即显示）
         let cache = {
             'us1_g1': { price: 4532.18, pct: 0.35 },
             'us1_g2': { price: 18960.45, pct: 0.45 },
@@ -842,6 +842,77 @@
             'ap3_g1': { price: 38450.30, pct: 0.55 },
             'ap3_g2': { price: 2712.60, pct: -0.31 },
         };
+
+        // JSONP 请求队列管理
+        let jsonpId = 0;
+        let pendingCallbacks = {};
+
+        function jsonpRequest(url, callbackName, timeoutMs = 8000) {
+            return new Promise((resolve, reject) => {
+                const id = ++jsonpId;
+                const fullCallback = `__gf${id}`;
+                pendingCallbacks[fullCallback] = resolve;
+
+                // 创建 script 标签
+                const script = document.createElement('script');
+                const separator = url.includes('?') ? '&' : '?';
+                script.src = `${url}${separator}callback=${fullCallback}`;
+                script.onerror = () => { delete pendingCallbacks[fullCallback]; reject(new Error('load failed')); };
+
+                // 超时
+                const timer = setTimeout(() => {
+                    delete pendingCallbacks[fullCallback];
+                    document.head.removeChild(script);
+                    reject(new Error('timeout'));
+                }, timeoutMs);
+
+                // 全局回调（Google 返回 JSONP 调用此函数）
+                window[fullCallback] = function(data) {
+                    clearTimeout(timer);
+                    delete pendingCallbacks[fullCallback];
+                    document.head.removeChild(script);
+                    resolve(data);
+                };
+
+                document.head.appendChild(script);
+            });
+        }
+
+        // 从 Google Finance 获取单只指数数据
+        // Google 返回格式: [ { "l": price, "cp": change_pct, "pcls_fix": prev_close, ... } ]
+        async function fetchGoogleSingle(symbol) {
+            const url = `https://www.google.com/finance/info?q=${symbol}`;
+            const data = await jsonpRequest(url, 'callback');
+            const item = Array.isArray(data) ? data[0] : data;
+            if (item && item.l != null && item.cp != null) {
+                const price = parseFloat(String(item.l).replace(/,/g, ''));
+                const pct = parseFloat(String(item.cp).replace(/,/g, ''));
+                return { price, pct: parseFloat(pct.toFixed(2)) };
+            }
+            throw new Error('invalid data');
+        }
+
+        // 从 Google 获取所有指数（并行请求）
+        async function fetchGoogleAll() {
+            const entries = Object.entries(GOOGLE_MAP);
+            const results = await Promise.allSettled(
+                entries.map(([key, symbol]) =>
+                    fetchGoogleSingle(symbol)
+                        .then(val => ({ key, ...val }))
+                        .catch(() => null)
+                )
+            );
+            const map = {};
+            results.forEach(r => {
+                if (r.status === 'fulfilled' && r.value) {
+                    map[r.value.key] = { price: r.value.price, pct: r.value.pct };
+                }
+            });
+            if (Object.keys(map).length > 0) {
+                Object.assign(cache, map);
+            }
+            return map;
+        }
 
         function renderGrid(dataMap) {
             Object.values(GROUPS).forEach(g => {
@@ -863,44 +934,13 @@
             });
         }
 
-        // 从 Yahoo Finance 获取实时数据
-        async function fetchYahoo() {
-            const entries = Object.entries(YAHOO_MAP);
-            // 并行请求所有指数
-            const results = await Promise.allSettled(
-                entries.map(([key, symbol]) =>
-                    fetch(`${YAHOO_BASE}/${encodeURIComponent(symbol)}?interval=1d&range=1d`)
-                        .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
-                        .then(json => {
-                            const meta = json?.chart?.result?.[0]?.meta;
-                            if (meta && meta.regularMarketPrice != null && meta.chartPreviousClose != null) {
-                                const price = meta.regularMarketPrice;
-                                const pct = ((price / meta.chartPreviousClose) - 1) * 100;
-                                return { key, price, pct: parseFloat(pct.toFixed(2)) };
-                            }
-                            throw new Error('no meta');
-                        })
-                )
-            );
-            const map = {};
-            results.forEach(r => {
-                if (r.status === 'fulfilled' && r.value) {
-                    map[r.value.key] = { price: r.value.price, pct: r.value.pct };
-                }
-            });
-            if (Object.keys(map).length > 0) {
-                Object.assign(cache, map);
-            }
-            return map;
-        }
-
         async function refreshAll() {
             const btn = document.getElementById('refreshIndexBtn');
             btn.textContent = '⏳ 加载中...';
             btn.disabled = true;
 
             try {
-                const data = await fetchYahoo();
+                const data = await fetchGoogleAll();
                 renderGrid(data);
                 if (Object.keys(data).length > 0) {
                     btn.textContent = '✅ 已更新';
