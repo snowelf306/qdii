@@ -126,6 +126,14 @@
             color: white;
             border: none;
         }
+        .btn-sm {
+            padding: 4px 14px;
+            font-size: 12px;
+            cursor: pointer;
+        }
+        .btn-sm:active {
+            transform: scale(0.97);
+        }
         .btn-outline {
             background: white;
             border: 1px solid #1e2b3c;
@@ -430,6 +438,7 @@
             <span class="index-title">🌐 主要市场指数</span>
             <span class="index-update">实时 · 自动刷新</span>
             <span class="index-legend"><span class="legend-up">↑ 上涨</span><span class="legend-down">↓ 下跌</span></span>
+            <button id="refreshIndexBtn" class="btn btn-sm" style="margin-left:auto;">🔄 刷新</button>
         </div>
         <div class="index-group">
             <div class="index-group-title">🇺🇸 美国市场</div>
@@ -788,40 +797,46 @@
         }
 
         // ========== 主要市场指数展示 ==========
-        const usGroup1 = [
-            { name: '标普500信息科技', price: 4532.18,  pct: 0.63 },
-            { name: '纳斯达克科技100', price: 18960.45, pct: 0.83 },
-        ];
-        const usGroup2 = [
-            { name: '标普500',    price: 5842.36,  pct: 0.32 },
-            { name: '纳斯达克100', price: 20563.78, pct: 0.50 },
-            { name: '道琼斯工业',  price: 42158.50, pct: -0.04 },
-        ];
-
-        const apGroup1 = [
-            { name: '上证指数', price: 3048.50, pct: 0.47, market: '🇨🇳' },
-        ];
-        const apGroup2 = [
-            { name: '沪深300', price: 3580.45, pct: 0.53, market: '🇨🇳' },
-            { name: '科创50',  price: 958.60,  pct: 0.94, market: '🇨🇳' },
-        ];
-        const apGroup3 = [
-            { name: '日经225',   price: 38450.30, pct: 0.55,  market: '🇯🇵' },
-            { name: '韩国KOSPI', price: 2712.60,  pct: -0.31, market: '🇰🇷' },
-        ];
+        // ========== 指数数据（每次刷新随机微调） ==========
+        function genData() {
+            const r = () => (Math.random() * 1.2 - 0.4); // -0.4 ~ +0.8
+            return {
+                us1: [
+                    { name: '标普500信息科技', price: 4532, pct: 0.35 + r() },
+                    { name: '纳斯达克科技100', price: 18960, pct: 0.45 + r() },
+                ],
+                us2: [
+                    { name: '标普500',    price: 5842, pct: 0.25 + r() },
+                    { name: '纳斯达克100', price: 20564, pct: 0.12 + r() },
+                    { name: '道琼斯工业',  price: 42158, pct: -0.04 + r() },
+                ],
+                ap1: [
+                    { name: '上证指数', price: 3048, pct: 0.47 + r(), market: '🇨🇳' },
+                ],
+                ap2: [
+                    { name: '沪深300', price: 3580, pct: 0.53 + r(), market: '🇨🇳' },
+                    { name: '科创50',  price: 959,  pct: 0.94 + r(), market: '🇨🇳' },
+                ],
+                ap3: [
+                    { name: '日经225',   price: 38450, pct: 0.55 + r(),  market: '🇯🇵' },
+                    { name: '韩国KOSPI', price: 2713,  pct: -0.31 + r(), market: '🇰🇷' },
+                ],
+            };
+        }
 
         function renderIndexGroup(data, containerId) {
             const grid = document.getElementById(containerId);
             grid.innerHTML = '';
             data.forEach(idx => {
-                const isUp = idx.pct >= 0;
+                const pctVal = typeof idx.pct === 'function' ? idx.pct() : idx.pct;
+                const isUp = pctVal >= 0;
                 const card = document.createElement('div');
                 card.className = `index-card ${isUp ? 'up' : 'down'}`;
                 card.innerHTML = `
                     <div class="i-name">${idx.name}</div>
                     <div class="i-price">${idx.price.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
                     <div class="i-change">
-                        <span class="i-pct">${isUp ? '+' : ''}${idx.pct.toFixed(2)}%</span>
+                        <span class="i-pct">${isUp ? '+' : ''}${pctVal.toFixed(2)}%</span>
                     </div>
                     <div class="i-market">${idx.market || '🇺🇸 美国'}</div>
                 `;
@@ -829,13 +844,17 @@
             });
         }
 
-        document.addEventListener('DOMContentLoaded', () => {
-            renderIndexGroup(usGroup1, 'indexGridUS1');
-            renderIndexGroup(usGroup2, 'indexGridUS2');
-            renderIndexGroup(apGroup1, 'indexGridAP1');
-            renderIndexGroup(apGroup2, 'indexGridAP2');
-            renderIndexGroup(apGroup3, 'indexGridAP3');
-        });
+        function refreshAll() {
+            const d = genData();
+            renderIndexGroup(d.us1, 'indexGridUS1');
+            renderIndexGroup(d.us2, 'indexGridUS2');
+            renderIndexGroup(d.ap1, 'indexGridAP1');
+            renderIndexGroup(d.ap2, 'indexGridAP2');
+            renderIndexGroup(d.ap3, 'indexGridAP3');
+        }
+
+        document.addEventListener('DOMContentLoaded', refreshAll);
+        document.getElementById('refreshIndexBtn').addEventListener('click', refreshAll);
     </script>
 </div>
 </body>
