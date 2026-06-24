@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ETF 并排看板</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0f2f5; color: #333; padding: 16px; }
+  .container { max-width: 1800px; margin: 0 auto; }
+
+  /* Index Banner */
+  .index-banner { background: linear-gradient(135deg, #1a237e, #3949ab); color: #fff; border-radius: 14px; padding: 14px 20px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+  .index-group { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .index-item { display: flex; align-items: center; gap: 8px; }
+  .index-item .name { font-size: 11px; opacity: .7; }
+  .index-item .value { font-size: 17px; font-weight: 700; }
+  .index-item .change { font-size: 12px; font-weight: 600; }
+  .index-item .change.up { color: #a5d6a7; }
+  .index-item .change.down { color: #ef9a9a; }
+  .index-divider { width: 1px; height: 32px; background: rgba(255,255,255,.2); }
+  .index-status { font-size: 11px; opacity: .5; }
+  .idx-refresh { background: rgba(255,255,255,.2); border: none; color: #fff; padding: 4px 10px; border-radius: 6px; cursor: pointer; font-size: 11px; }
+  .idx-refresh:disabled { opacity: .5; cursor: not-allowed; }
+
+  /* Two Columns */
+  .funds-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 1100px) { .funds-row { grid-template-columns: 1fr; } }
+  .fund-col { background: #fff; border-radius: 14px; box-shadow: 0 1px 4px rgba(0,0,0,.06); overflow: hidden; }
+
+  /* Fund Header */
+  .fund-header { background: linear-gradient(135deg, #1a237e, #283593); color: #fff; padding: 18px 20px; }
+  .fund-header .top { display: flex; justify-content: space-between; align-items: flex-start; }
+  .fund-header .code { background: rgba(255,255,255,.15); padding: 2px 10px; border-radius: 6px; font-size: 12px; display: inline-block; }
+  .fund-header h2 { font-size: 18px; margin: 4px 0 2px; }
+  .fund-header .sub { font-size: 12px; opacity: .7; }
+  .fund-header .nav-row { display: flex; align-items: baseline; gap: 12px; margin-top: 6px; }
+  .fund-header .nav-big { font-size: 28px; font-weight: 700; }
+  .fund-header .nav-label { font-size: 11px; opacity: .6; }
+  .fund-header .info { font-size: 11px; opacity: .6; text-align: right; }
+
+  /* Metrics */
+  .fund-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; border-bottom: 1px solid #eee; }
+  .fund-metric { padding: 10px 14px; border-right: 1px solid #f0f0f0; }
+  .fund-metric:last-child { border-right: none; }
+  .fund-metric .lbl { font-size: 10px; color: #999; text-transform: uppercase; letter-spacing: .3px; }
+  .fund-metric .val { font-size: 16px; font-weight: 700; margin-top: 2px; }
+  .fund-metric .val.blue { color: #1565c0; }
+  .fund-metric .val.orange { color: #e65100; }
+  .fund-metric .val.green { color: #2e7d32; }
+
+  /* Charts in column */
+  .fund-charts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 10px; }
+  .fund-chart { }
+  .fund-chart h4 { font-size: 12px; color: #666; margin-bottom: 4px; }
+  .fund-chart canvas { width: 100% !important; height: auto !important; max-height: 200px; }
+
+  /* Sectors */
+  .fund-sectors { padding: 8px 12px 12px; border-bottom: 1px solid #eee; }
+  .fund-sectors h4 { font-size: 12px; color: #666; margin-bottom: 6px; }
+  .sec-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 4px; }
+  .sec-item { display: flex; justify-content: space-between; padding: 4px 8px; background: #f5f7fa; border-radius: 4px; font-size: 11px; }
+  .sec-item .sn { font-weight: 500; }
+  .sec-item .sw { font-weight: 600; }
+
+  /* History bar */
+  .fund-hist { padding: 8px 12px; border-bottom: 1px solid #eee; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .fund-hist .hlbl { font-size: 11px; color: #888; }
+  .fund-hist .htag { background: #f5f7fa; border-radius: 4px; padding: 2px 8px; font-size: 10px; cursor: pointer; border: 1px solid transparent; }
+  .fund-hist .htag.active { border-color: #1565c0; background: #e3f2fd; }
+  .fund-hist .hchg { font-size: 11px; font-weight: 600; }
+  .fund-hist .hchg.up { color: #2e7d32; }
+  .fund-hist .hchg.down { color: #c62828; }
+
+  /* Table */
+  .fund-table-wrap { padding: 8px 12px 12px; overflow-x: auto; }
+  .fund-table-wrap .tb-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+  .fund-table-wrap .tb-top h4 { font-size: 12px; color: #666; }
+  .fund-table-wrap .tb-top input { padding: 3px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 11px; width: 120px; }
+  .fund-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  .fund-table th { background: #f5f7fa; padding: 5px 6px; text-align: left; font-weight: 600; color: #555; cursor: pointer; white-space: nowrap; font-size: 10px; }
+  .fund-table th:hover { background: #eef0f4; }
+  .fund-table td { padding: 4px 6px; border-bottom: 1px solid #f0f0f0; }
+  .fund-table tr:hover td { background: #fafbfc; }
+  .rn { display: inline-block; width: 16px; height: 16px; line-height: 16px; text-align: center; border-radius: 50%; font-size: 9px; font-weight: 600; }
+  .rn-1,.rn-2,.rn-3 { background: #ffd700; color: #333; }
+  .rn-o { background: #e8eaf6; color: #555; }
+  .wb { display: inline-block; height: 6px; border-radius: 3px; background: #1565c0; vertical-align: middle; min-width: 2px; }
+  .rt { font-size: 9px; padding: 1px 5px; border-radius: 3px; }
+  .rt.us { background: #e8f5e9; color: #2e7d32; }
+  .rt.kr { background: #fce4ec; color: #c62828; }
+  .rt.cn { background: #e3f2fd; color: #1565c0; }
+
+  .drop-zone { border: 2px dashed #bbb; border-radius: 10px; padding: 12px; text-align: center; color: #888; transition: .2s; margin-bottom: 16px; background: #fff; cursor: pointer; font-size: 12px; }
+  .drop-zone:hover, .drop-zone.drag-over { border-color: #1565c0; background: #e3f2fd; color: #1565c0; }
+  .drop-zone input[type="file"] { display: none; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 4px; }
+  .legend-item { display: flex; align-items: center; gap: 3px; font-size: 9px; }
+  .legend-color { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+
+  .controls { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+  .btn { padding: 5px 12px; border: none; border-radius: 6px; cursor: pointer; font-size: 11px; }
+  .btn-outline { background: transparent; border: 1px solid #ddd; color: #555; }
+  .btn-outline:hover { background: #f5f5f5; }
+  .btn-danger { background: #c62828; color: #fff; }
+  .btn-danger:hover { background: #b71c1c; }
+
+  .loading-spinner { display: inline-block; width: 10px; height: 10px; border: 2px solid rgba(255,255,255,.3); border-top-color: #fff; border-radius: 50%; animation: spin .6s linear infinite; vertical-align: middle; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="drop-zone" id="dropZone">📂 <strong>拖拽PCF/SSE XML文件</strong> 或点击选择（支持深交所PCF和上交所SSE格式）<input type="file" id="fileInput" accept=".xml"></div>
+  <div class="controls">
+    <button class="btn btn-outline" onclick="exportCSV('159509')">📥 159509导出CSV</button>
+    <button class="btn btn-outline" onclick="exportCSV('513310')">📥 513310导出CSV</button>
+    <button class="btn btn-danger" onclick="clearAllHist()">🗑️ 清除历史</button>
+    <span style="font-size:11px;color:#888;margin-left:auto;" id="globalStatus"></span>
+  </div>
+
+  <!-- Index Banner -->
+  <div class="index-banner">
+    <div class="index-group" id="indexContainer"></div>
+    <div style="display:flex;align-items:center;gap:6px;">
+      <span class="index-status" id="indexStatus">刷新中...</span>
+      <button class="idx-refresh" id="idxBtn" onclick="refreshAllIndex()">🔄</button>
+    </div>
+  </div>
+
+  <!-- Two Columns -->
+  <div class="funds-row">
+    <div class="fund-col" id="col_159509"></div>
+    <div class="fund-col" id="col_513310"></div>
+  </div>
+</div>
+
+<script>
+// ===== FUND DATA =====
+const FUNDS = {
+  '159509': {
+    code:'159509', name:'纳指科技ETF景顺', manager:'景顺长城基金管理有限公司', idxName:'NDXTMC (纳斯达克科技指数)',
+    indices:[{id:'sp500',yahoo:'^GSPC',label:'S&P 500',short:'SP500'},{id:'ndx',yahoo:'^NDX',label:'纳斯达克100',short:'NDX'}],
+    data:{
+      TradingDay:'20260623', NAV:'2.3207', NAVperCU:'2320691.71', CreationRedemptionUnit:'1000000.00',
+      EstimateCashComponent:'363.32', CashComponent:'-1819.26',
+      Components:[
+        {Code:"AAPL",S:151,A:337338.83,R:"us",N:"苹果"},{Code:"ADBE",S:6,A:8778.10,R:"us",N:"Adobe"},{Code:"ADI",S:7,A:22798.51,R:"us",N:"亚德诺"},{Code:"ADSK",S:3,A:4358.91,R:"us",N:"欧特克"},
+        {Code:"ALAB",S:3,A:9379.70,R:"us",N:"Astera Labs"},{Code:"AMAT",S:12,A:55513.98,R:"us",N:"应用材料"},{Code:"AMD",S:24,A:96681.46,R:"us",N:"超威半导体"},{Code:"APP",S:5,A:17605.91,R:"us",N:"AppLovin"},{Code:"ARM",S:6,A:19766.47,R:"us",N:"ARM Holdings"},
+        {Code:"ASML",S:1,A:14465.85,R:"us",N:"ASML"},{Code:"AVGO",S:56,A:172686.38,R:"us",N:"博通"},{Code:"CDNS",S:4,A:11616.28,R:"us",N:"Cadence"},{Code:"CRWD",S:4,A:20536.21,R:"us",N:"CrowdStrike"},{Code:"CRWV",S:7,A:6189.49,R:"us",N:"CoreWeave"},
+        {Code:"DASH",S:6,A:7802.06,R:"us",N:"DoorDash"},{Code:"DDOG",S:5,A:8358.60,R:"us",N:"Datadog"},{Code:"FTNT",S:11,A:11934.65,R:"us",N:"飞塔信息"},{Code:"GOOG",S:60,A:165279.83,R:"us",N:"谷歌A"},{Code:"GOOGL",S:64,A:176571.96,R:"us",N:"谷歌"},
+        {Code:"INTC",S:75,A:75334.20,R:"us",N:"英特尔"},{Code:"INTU",S:4,A:8006.26,R:"us",N:"Intuit"},{Code:"KLAC",S:19,A:36970.04,R:"us",N:"科磊"},{Code:"LRCX",S:19,A:55412.33,R:"us",N:"泛林集团"},{Code:"MCHP",S:8,A:5983.41,R:"us",N:"微芯科技"},
+        {Code:"META",S:33,A:142795.28,R:"us",N:"Meta"},{Code:"MPWR",S:1,A:11722.28,R:"us",N:"Monolithic Power"},{Code:"MRVL",S:13,A:30267.42,R:"us",N:"迈威尔科技"},{Code:"MSFT",S:87,A:247442.97,R:"us",N:"微软"},{Code:"MSTR",S:5,A:4217.91,R:"us",N:"MicroStrategy"},
+        {Code:"MU",S:17,A:144516.25,R:"us",N:"美光科技"},{Code:"NBIS",S:3,A:6447.51,R:"us",N:"Nebius Group"},{Code:"NVDA",S:223,A:352214.58,R:"us",N:"英伟达"},{Code:"NXPI",S:4,A:9393.71,R:"us",N:"恩智浦"},{Code:"PANW",S:12,A:25888.11,R:"us",N:"Palo Alto Networks"},
+        {Code:"PDD",S:10,A:5964.22,R:"us",N:"拼多多"},{Code:"PLTR",S:35,A:33707.64,R:"us",N:"Palantir"},{Code:"QCOM",S:16,A:27120.54,R:"us",N:"高通"},{Code:"ROP",S:2,A:4951.51,R:"us",N:"Roper Tech"},{Code:"SHOP",S:18,A:14687.89,R:"us",N:"Shopify"},
+        {Code:"SNDK",S:2,A:32755.96,R:"us",N:"SanDisk"},{Code:"SNPS",S:3,A:10244.19,R:"us",N:"Synopsys"},{Code:"STX",S:3,A:24068.94,R:"us",N:"希捷科技"},{Code:"TER",S:2,A:6565.73,R:"us",N:"Teradyne"},{Code:"TRI",S:6,A:3534.45,R:"us",N:"Thomson Reuters"},
+        {Code:"TXN",S:14,A:33884.48,R:"us",N:"德州仪器"},{Code:"WDAY",S:3,A:2629.70,R:"us",N:"Workday"},{Code:"WDC",S:5,A:27970.57,R:"us",N:"西部数据"}
+      ]
+    }
+  },
+  '513310': {
+    code:'513310', name:'半导体ETF', manager:'上交所', idxName:'中韩半导体指数',
+    indices:[{id:'kospi',yahoo:'^KS11',label:'KOSPI',short:'KOSPI'},{id:'ssec',yahoo:'000001.SS',label:'上证指数',short:'SH'}],
+    data:{
+      TradingDay:'20260623', NAV:'5.6724', NAVperCU:'5672417.35', CreationRedemptionUnit:'1000000',
+      EstimateCashComponent:'610.16', CashComponent:'-3596.88',
+      Components:[
+        {Code:"A000660",S:75,A:969982.28,R:"kr",N:"SK hynix"},{Code:"A000990",S:137,A:105618.08,R:"kr",N:"DB HiTek"},{Code:"A005930",S:478,A:748661.94,R:"kr",N:"Samsung Electronics"},{Code:"A030530",S:192,A:21011.96,R:"kr",N:"WONIK HOLDINGS"},{Code:"A036930",S:141,A:123632.70,R:"kr",N:"JUSUNG ENGINEERING"},{Code:"A039030",S:38,A:87213.11,R:"kr",N:"EO Technics"},{Code:"A042700",S:59,A:78814.80,R:"kr",N:"HANMI Semiconductor"},{Code:"A058470",S:167,A:68368.63,R:"kr",N:"LEENO Industrial"},{Code:"A064760",S:26,A:30815.24,R:"kr",N:"TOKAI CARBON KOREA"},{Code:"A084370",S:64,A:53111.21,R:"kr",N:"Eugene Technology"},{Code:"A095340",S:47,A:41273.37,R:"kr",N:"ISC Co."},{Code:"A222800",S:114,A:67682.76,R:"kr",N:"SIMMTECH"},{Code:"A240810",S:148,A:113114.75,R:"kr",N:"WONIK IPS"},{Code:"A403870",S:299,A:79486.04,R:"kr",N:"HPSP Co."},{Code:"A440110",S:164,A:84216.22,R:"kr",N:"FADU INC."},
+        {Code:"002049",S:657,A:53847.72,R:"cn",N:"紫光国微"},{Code:"002371",S:419,A:312155.00,R:"cn",N:"北方华创"},{Code:"600584",S:1384,A:126262.32,R:"cn",N:"长电科技"},{Code:"603501",S:819,A:74168.64,R:"cn",N:"豪威集团"},{Code:"603893",S:203,A:36521.73,R:"cn",N:"瑞芯微"},{Code:"603986",S:646,A:445546.20,R:"cn",N:"兆易创新"},{Code:"688008",S:1108,A:310295.40,R:"cn",N:"澜起科技"},{Code:"688012",S:725,A:270236.50,R:"cn",N:"中微公司"},{Code:"688041",S:899,A:294107.85,R:"cn",N:"海光信息"},{Code:"688072",S:191,A:142869.91,R:"cn",N:"拓荆科技"},{Code:"688082",S:140,A:52659.60,R:"cn",N:"盛美上海"},{Code:"688256",S:304,A:442924.96,R:"cn",N:"寒武纪"},{Code:"688396",S:514,A:40194.80,R:"cn",N:"华润微"},{Code:"688521",S:407,A:115588.00,R:"cn",N:"芯原股份"},{Code:"688981",S:1933,A:281425.47,R:"cn",N:"中芯国际"}
+      ]
+    }
+  }
+};
+const RL = {us:'美股',kr:'韩国',cn:'A股'};
+const SM = {
+  AAPL:"消费电子",MSFT:"软件",META:"互联网",GOOGL:"互联网",GOOG:"互联网",PLTR:"软件",
+  PANW:"网络安全",CRWD:"网络安全",FTNT:"网络安全",SNPS:"EDA",CDNS:"EDA",SHOP:"电商SaaS",
+  DDOG:"云监控",DASH:"外卖配送",APP:"移动互联网",MSTR:"比特币",PDD:"电商",ARM:"芯片设计",
+  ASML:"光刻机",ADBE:"设计软件",INTU:"财税软件",ADSK:"设计软件",ROP:"企业软件",
+  WDAY:"HR软件",TRI:"金融信息",MPWR:"电源管理",ALAB:"AI硬件",CRWV:"AI云",NBIS:"AI基础",
+  NVDA:"半导体",AMD:"半导体",INTC:"半导体",AVGO:"半导体",MU:"半导体",QCOM:"半导体",TXN:"半导体",
+  AMAT:"半导体设备",LRCX:"半导体设备",KLAC:"半导体设备",ADI:"半导体",NXPI:"半导体",MCHP:"半导体",
+  MRVL:"半导体",STX:"半导体",WDC:"半导体",SNDK:"半导体",TER:"半导体设备",
+  A000660:"半导体",A005930:"半导体",A000990:"半导体",A036930:"半导体设备",A039030:"半导体设备",
+  A042700:"半导体设备",A058470:"半导体设备",A064760:"材料",A084370:"半导体设备",A095340:"半导体",
+  A222800:"半导体",A240810:"半导体设备",A403870:"半导体设备",A440110:"半导体",A030530:"半导体",
+  "600584":"封测","603501":"芯片设计","603893":"芯片设计","603986":"芯片设计","688008":"芯片设计",
+  "688256":"AI芯片","688521":"芯片设计","002049":"芯片设计","002371":"半导体设备","688012":"半导体设备",
+  "688072":"半导体设备","688082":"半导体设备","688041":"芯片设计","688396":"半导体","688981":"代工"
+};
+let histories = {};
+const HP = 'etf_h_';
+
+function getFC(c) { return FUNDS[c]; }
+function comps(c) { return FUNDS[c].data.Components; }
+
+// ===== BUILD COLUMN HTML =====
+function buildColumn(code) {
+  const fc = getFC(code);
+  const col = document.getElementById('col_'+code);
+  col.innerHTML = `
+    <div class="fund-header">
+      <div class="top">
+        <div><span class="code">${fc.code}</span><h2>${fc.name}</h2><div class="sub">${fc.manager} · ${fc.idxName}</div></div>
+        <div class="info"><span id="td_${code}"></span></div>
+      </div>
+      <div class="nav-row">
+        <span class="nav-big" id="nav_${code}"></span>
+        <span class="nav-label">NAV</span>
+        <span style="margin-left:auto;text-align:right;font-size:11px;opacity:.7;">
+          篮子: <span id="bv_${code}"></span>
+        </span>
+      </div>
+    </div>
+    <div class="fund-metrics">
+      <div class="fund-metric"><div class="lbl">NAV per CU</div><div class="val blue" id="ncu_${code}"></div></div>
+      <div class="fund-metric"><div class="lbl">申赎单位</div><div class="val" id="cu_${code}"></div></div>
+      <div class="fund-metric"><div class="lbl">成分股</div><div class="val green" id="cc_${code}"></div></div>
+      <div class="fund-metric"><div class="lbl">预估现金</div><div class="val orange" id="ec_${code}"></div></div>
+      <div class="fund-metric"><div class="lbl">现金差额</div><div class="val" id="csh_${code}"></div></div>
+      <div class="fund-metric"><div class="lbl">前3集中度</div><div class="val blue" id="top3_${code}"></div></div>
+    </div>
+    <div class="fund-charts">
+      <div class="fund-chart"><h4>🏆 前10持仓</h4><canvas id="pie_${code}" height="200"></canvas><div class="legend" id="pieL_${code}"></div></div>
+      <div class="fund-chart"><h4>📊 权重分布</h4><canvas id="bar_${code}" height="200"></canvas></div>
+    </div>
+    <div class="fund-sectors" id="sec_${code}"><h4>🏭 行业分布</h4><div class="sec-grid" id="secG_${code}"></div></div>
+    <div class="fund-hist" id="hist_${code}">
+      <span class="hlbl">📅 PCF:</span>
+      <span id="histTag_${code}"></span>
+      <span id="hchg_${code}"></span>
+    </div>
+    <div class="fund-table-wrap">
+      <div class="tb-top">
+        <h4>📋 成分股</h4>
+        <input type="text" id="srch_${code}" placeholder="🔍 搜索..." oninput="renderTable('${code}')">
+      </div>
+      <table class="fund-table">
+        <thead><tr>
+          <th onclick="sortBy('${code}','rank')">#</th>
+          <th onclick="sortBy('${code}','code')">代码</th>
+          <th onclick="sortBy('${code}','name')">名称</th>
+          <th onclick="sortBy('${code}','shares')">数量</th>
+          <th onclick="sortBy('${code}','amount')">金额</th>
+          <th onclick="sortBy('${code}','weight')">权重</th>
+          <th>条</th>
+          <th>区</th>
+        </tr></thead>
+        <tbody id="tb_${code}"></tbody>
+      </table>
+    </div>`;
+}
+
+// ===== RENDER FUND =====
+function renderFund(code) {
+  const fc = getFC(code);
+  const d = fc.data;
+  const cs = calc(d.Components);
+  const tv = cs.reduce((s,c)=>s+c.A,0);
+
+  // We need to make sure the column HTML exists first
+  let col = document.getElementById('col_'+code);
+  if (!col || !col.children.length) buildColumn(code);
+
+  document.getElementById('td_'+code).textContent = `交易日: ${d.TradingDay.slice(0,4)}-${d.TradingDay.slice(4,6)}-${d.TradingDay.slice(6,8)}`;
+  document.getElementById('nav_'+code).textContent = parseFloat(d.NAV).toFixed(4);
+  document.getElementById('ncu_'+code).textContent = parseFloat(d.NAVperCU).toLocaleString('zh-CN',{minFD:2});
+  document.getElementById('cu_'+code).textContent = parseFloat(d.CreationRedemptionUnit).toLocaleString('zh-CN');
+  document.getElementById('cc_'+code).textContent = cs.length;
+  document.getElementById('ec_'+code).textContent = parseFloat(d.EstimateCashComponent||0).toFixed(2);
+  document.getElementById('csh_'+code).textContent = parseFloat(d.CashComponent||0).toFixed(2);
+  document.getElementById('bv_'+code).textContent = tv.toLocaleString('zh-CN',{minFD:2});
+  document.getElementById('top3_'+code).textContent = cs.length>=3 ? (cs[0].W+cs[1].W+cs[2].W).toFixed(1)+'%' : (cs.reduce((s,c)=>s+c.W,0)).toFixed(1)+'%';
+
+  drawPie(code, cs.slice(0,10));
+  drawBar(code, cs);
+  renderSectors(code, cs);
+  renderTable(code, cs);
+  saveHist(code, d, cs);
+  renderHist(code);
+}
+
+function calc(components) {
+  const total = components.reduce((s,c)=>s+(c.A||0),0);
+  return components.map(c=>({
+    ...c, N: c.N || c.Code, S: c.S || 0,
+    Sec: SM[c.Code]||(c.R==='kr'?'韩国半导体':c.R==='cn'?'中国半导体':'其他'),
+    W: total>0 ? ((c.A||0)/total*100) : 0
+  })).sort((a,b)=>b.W-a.W);
+}
+
+// ===== TABLE =====
+const sortState = {};
+
+function renderTable(code, comps) {
+  if (!comps) { comps = calc(comps(code)); }
+  const q = (document.getElementById('srch_'+code)||{}).value||'';
+  const ss = sortState[code]||{f:'weight',d:-1};
+  const sorted = [...comps].filter(c => !q || c.Code.toLowerCase().includes(q) || c.N.toLowerCase().includes(q))
+    .sort((a,b)=>{ let va=a[ss.f],vb=b[ss.f]; if(ss.f==='amount'||ss.f==='A'){va=a.A||0;vb=b.A||0;} if(ss.f==='shares'){va=a.S||0;vb=b.S||0;} if(ss.f==='name'){va=(a.N||'').toLowerCase();vb=(b.N||'').toLowerCase();} if(ss.f==='code'){va=a.Code.toLowerCase();vb=b.Code.toLowerCase();} if(ss.f==='weight'||ss.f==='W'){va=a.W||0;vb=b.W||0;} return va<vb?-ss.d:va>vb?ss.d:0; });
+  const mw = sorted[0]?.W||1;
+  const tb = document.getElementById('tb_'+code);
+  if (!tb) return;
+  tb.innerHTML = sorted.map((c,i)=>{
+    const r = comps.findIndex(x=>x.Code===c.Code)+1;
+    const rc = r<=3?'rn-'+r:'rn-o';
+    return `<tr><td><span class="rn ${rc}">${r}</span></td><td><strong>${c.Code}</strong></td><td>${c.N||c.Code}${c.R?` <span class="rt ${c.R}">${RL[c.R]||c.R}</span>`:''}</td><td>${c.S}</td><td>${(c.A||0).toLocaleString('zh-CN',{minFD:2})}</td><td>${c.W.toFixed(2)}%</td><td><div class="wb" style="width:${Math.max(2,c.W/mw*120)}px;background:${gc(r)}"></div></td><td>${c.R?`<span class="rt ${c.R}">${RL[c.R]||c.R}</span>`:''}</td></tr>`;
+  }).join('');
+  if (!sorted.length) tb.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:16px;color:#888;">无匹配</td></tr>';
+}
+
+function sortBy(code, field) {
+  const map = {rank:'weight',code:'code',name:'name',shares:'shares',amount:'amount',weight:'weight'};
+  const f = map[field]||'weight';
+  const ss = sortState[code]||{f:'weight',d:-1};
+  if (ss.f===f) ss.d=-ss.d; else { ss.f=f; ss.d=field==='rank'?1:-1; }
+  sortState[code]=ss;
+  renderTable(code);
+}
+
+// ===== SECTORS =====
+function renderSectors(code, comps) {
+  const m = {}; comps.forEach(c=>{m[c.Sec]=(m[c.Sec]||0)+c.W;});
+  const arr = Object.entries(m).sort((a,b)=>b[1]-a[1]);
+  const g = document.getElementById('secG_'+code);
+  if (!g) return;
+  g.innerHTML = arr.map(s=>`<div class="sec-item"><span class="sn">${s[0]}</span><span class="sw">${s[1].toFixed(1)}%</span></div>`).join('');
+}
+
+// ===== CHARTS =====
+function gc(i) { const c=['#e53935','#1e88e5','#43a047','#fb8c00','#8e24aa','#00acc1','#fdd835','#d81b60','#3949ab','#00897b','#5e35b1','#039be5','#7cb342','#ffb300','#c0ca33','#e91e63','#2196f3','#4caf50','#ff9800','#9c27b0']; return c[(i-1)%c.length]; }
+
+function drawPie(code, comps) {
+  const cnv = document.getElementById('pie_'+code);
+  if (!cnv) return;
+  const dpr = window.devicePixelRatio||1, rect = cnv.parentElement.getBoundingClientRect();
+  const w = Math.max(rect.width-8,100), h = 200;
+  cnv.width=w*dpr; cnv.height=h*dpr; cnv.style.width=w+'px'; cnv.style.height=h+'px';
+  const ctx=cnv.getContext('2d'); ctx.scale(dpr,dpr);
+  const cx=w*0.38, cy=h/2, r=Math.min(cx-20, h/2-20, 85);
+  const total=comps.reduce((s,c)=>s+c.W,0), others=100-total;
+  let sa=-Math.PI/2;
+  const slices=[...comps, others>0.5?{Code:'其他',W:others}:null].filter(Boolean);
+  slices.forEach((c,i)=>{
+    const a=(c.W/100)*2*Math.PI, col=c.Code==='其他'?'#ddd':gc(i+1);
+    ctx.beginPath(); ctx.moveTo(cx,cy); ctx.arc(cx,cy,r,sa,sa+a); ctx.closePath();
+    ctx.fillStyle=col; ctx.fill(); ctx.strokeStyle='#fff'; ctx.lineWidth=1.5; ctx.stroke();
+    if(a>0.25){const m=sa+a/2; ctx.fillStyle='#333'; ctx.font='9px -apple-system, sans-serif'; ctx.textAlign=m>Math.PI/2&&m<3*Math.PI/2?'right':'left'; ctx.fillText(`${c.Code} ${c.W.toFixed(1)}%`,cx+Math.cos(m)*(r+14),cy+Math.sin(m)*(r+14)+3);}
+    sa+=a;
+  });
+  ctx.fillStyle='#333'; ctx.font='bold 11px -apple-system, sans-serif'; ctx.textAlign='center';
+  ctx.fillText('前10',cx,cy-4); ctx.font='10px -apple-system, sans-serif'; ctx.fillStyle='#888';
+  ctx.fillText(`${total.toFixed(1)}%`,cx,cy+8);
+  const lg = document.getElementById('pieL_'+code);
+  if(lg) lg.innerHTML=comps.map((c,i)=>`<div class="legend-item"><div class="legend-color" style="background:${gc(i+1)}"></div><span>${c.Code} (${c.W.toFixed(1)}%)</span></div>`).join('');
+}
+
+function drawBar(code, comps) {
+  const cnv = document.getElementById('bar_'+code);
+  if (!cnv) return;
+  const dpr = window.devicePixelRatio||1, rect = cnv.parentElement.getBoundingClientRect();
+  const w = Math.max(rect.width-8,100), h=200;
+  cnv.width=w*dpr; cnv.height=h*dpr; cnv.style.width=w+'px'; cnv.style.height=h+'px';
+  const ctx=cnv.getContext('2d'); ctx.scale(dpr,dpr);
+  const top=comps.slice(0,12), mw=top[0]?.W||1;
+  const pad={top:10,right:40,bottom:20,left:48}, cw=w-pad.left-pad.right, ch=h-pad.top-pad.bottom;
+  const bh=Math.min(13,(ch-(top.length-1)*2)/top.length), sy=pad.top+(ch-(bh*top.length+(top.length-1)*2))/2;
+  ctx.clearRect(0,0,w,h);
+  top.forEach((c,i)=>{
+    const y=sy+i*(bh+2), bw=(c.W/mw)*cw, x=pad.left;
+    ctx.fillStyle='#333'; ctx.font='9px -apple-system, sans-serif'; ctx.textAlign='right';
+    ctx.fillText(c.Code,x-4,y+bh/2+3);
+    const g=ctx.createLinearGradient(x,y,x+bw,y); g.addColorStop(0,gc(i+1)); g.addColorStop(1,gc(i+1)+'88');
+    ctx.fillStyle=g; ctx.beginPath(); ctx.roundRect(x,y,Math.max(bw,2),bh,2); ctx.fill();
+    ctx.fillStyle='#333'; ctx.textAlign='left'; ctx.font='8px -apple-system, sans-serif';
+    ctx.fillText(`${c.W.toFixed(1)}%`,x+bw+3,y+bh/2+3);
+  });
+}
+
+// ===== INDEX =====
+let indexCache = {};
+const ICK = 'etf_idx_v3';
+
+function renderIndex() {
+  const c = document.getElementById('indexContainer');
+  const st = document.getElementById('indexStatus');
+  let items = '';
+  Object.keys(FUNDS).forEach(code => {
+    const fc = getFC(code);
+    fc.indices.forEach(idx => {
+      const d = indexCache[idx.id];
+      if (d && d.p) {
+        const cls = d.cp>=0?'up':'down', arr = d.cp>=0?'▲':'▼';
+        items += `<div class="index-item"><div><div class="name">${idx.short}</div><div><span class="value">${d.p.toFixed(2)}</span><span class="change ${cls}">${arr}${Math.abs(d.cp).toFixed(2)}%</span></div></div></div>`;
+      } else {
+        items += `<div class="index-item"><div><div class="name">${idx.short}</div><div><span class="value" style="color:rgba(255,255,255,.4);">---</span></div></div></div>`;
+      }
+      items += '<div class="index-divider"></div>';
+    });
+  });
+  c.innerHTML = items.slice(0, -items.indexOf('<div class="index-divider"></div>'));
+  const ts = Object.values(indexCache).filter(d=>d.t).map(d=>d.t);
+  if (ts.length) {
+    const age = Math.round((Date.now()-Math.max(...ts))/1000/60);
+    st.textContent = `更新于 ${age>60?Math.round(age/60)+'h':age+'min'}`;
+  } else st.textContent = '刷新中...';
+}
+
+function loadIdxCache() { try {const d=localStorage.getItem(ICK); if(d) indexCache=JSON.parse(d); renderIndex();}catch(e){} }
+
+async function refreshAllIndex() {
+  const btn = document.getElementById('idxBtn');
+  btn.disabled=true; btn.innerHTML='<span class="loading-spinner"></span>';
+  const allSym = []; const idxMap = {};
+  Object.keys(FUNDS).forEach(code => { getFC(code).indices.forEach(idx => { allSym.push(idx.yahoo); idxMap[idx.yahoo]=idx.id; }); });
+
+  let data = null;
+  try { const r = await fetch(`https://query1.finance.yahoo.com/v7/finance/quote?symbols=${allSym.join(',')}`); if(r.ok) data=await r.json(); } catch(e){}
+  if (!data) {
+    try { const r = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent('https://query1.finance.yahoo.com/v7/finance/quote?symbols='+allSym.join(','))}`); if(r.ok) data=await r.json(); } catch(e){}
+  }
+  if (data && data.quoteResponse) {
+    const now = Date.now();
+    data.quoteResponse.result.forEach(item => {
+      const p = item.regularMarketPrice, pc = item.regularMarketPreviousClose, id = idxMap[item.symbol];
+      if (p && p>0 && id) { indexCache[id] = {p, cp: pc?((p-pc)/pc*100):0, t: now}; }
+    });
+    try { localStorage.setItem(ICK, JSON.stringify(indexCache)); } catch(e) {}
+    renderIndex();
+  }
+  btn.disabled=false; btn.innerHTML='🔄';
+}
+
+// ===== HISTORY =====
+function saveHist(code, d, comps) {
+  const key = d.TradingDay;
+  if (!histories[code]) histories[code] = [];
+  const h = histories[code];
+  const i = h.findIndex(x=>x.date===key);
+  const e = {date:key, disp:`${key.slice(0,4)}-${key.slice(4,6)}-${key.slice(6,8)}`, nav:parseFloat(d.NAV), tv:comps.reduce((s,c)=>s+(c.A||0),0), cc:comps.length};
+  if (i>=0) h[i]=e; else h.push(e);
+  h.sort((a,b)=>a.date.localeCompare(b.date));
+  try { localStorage.setItem(HP+code, JSON.stringify(h)); } catch(e) {}
+}
+
+function renderHist(code) {
+  const h = histories[code]||[];
+  const tag = document.getElementById('histTag_'+code);
+  const chg = document.getElementById('hchg_'+code);
+  if (!tag) return;
+  if (h.length===0) { tag.innerHTML = '<span style="font-size:10px;color:#999;">暂无</span>'; chg.textContent=''; return; }
+  tag.innerHTML = h.map(x => `<span class="htag${x.date===(FUNDS[code].data.TradingDay||'')?' active':''}">${x.disp}</span>`).join('');
+  if (h.length>=2) {
+    const l=h[h.length-1], p=h[h.length-2], c=((l.nav-p.nav)/p.nav*100);
+    chg.innerHTML = `<span class="hchg ${c>=0?'up':'down'}">${c>=0?'▲':'▼'}${Math.abs(c).toFixed(2)}%</span>`;
+  } else chg.textContent = '';
+}
+
+// ===== EXPORT / CLEAR =====
+function exportCSV(code) {
+  const cs = calc(comps(code));
+  const csv = '排名,代码,名称,地区,数量,金额,权重%\n'+cs.map((c,i)=>`${i+1},${c.Code},${c.N||c.Code},${c.R||''},${c.S||0},${(c.A||0).toFixed(2)},${c.W.toFixed(2)}`).join('\n');
+  const b=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`${code}_${FUNDS[code].data.TradingDay}.csv`;a.click();
+}
+
+function clearAllHist() {
+  if (!confirm('清除所有ETF历史快照？')) return;
+  histories={}; Object.keys(FUNDS).forEach(k=>{localStorage.removeItem(HP+k); renderHist(k);});
+}
+
+// ===== FILE LOADING =====
+document.getElementById('dropZone').addEventListener('click',()=>document.getElementById('fileInput').click());
+document.getElementById('dropZone').addEventListener('dragover',e=>{e.preventDefault();e.target.classList.add('drag-over');});
+document.getElementById('dropZone').addEventListener('dragleave',e=>{e.target.classList.remove('drag-over');});
+document.getElementById('dropZone').addEventListener('drop',e=>{e.preventDefault();e.target.classList.remove('drag-over');if(e.dataTransfer.files[0])loadFile(e.dataTransfer.files[0]);});
+document.getElementById('fileInput').addEventListener('change',e=>{if(e.target.files[0])loadFile(e.target.files[0]);});
+
+function parseXML(xmlText) {
+  const p=new DOMParser(), xml=p.parseFromString(xmlText,'text/xml');
+  let d=parseSZ(xml)||parseSSE(xml)||parseETFDef(xml); if(!d) throw new Error('不支持格式'); return d;
+}
+function parseSZ(xml) {
+  const p=xml.querySelector('PCFFile'); if(!p) return null;
+  const g=t=>(p.querySelector(t)||{}).textContent||'';
+  const cs=[]; p.querySelectorAll('Component').forEach(c=>{const cd=(c.querySelector('UnderlyingSecurityID')||{}).textContent||'',s=parseFloat((c.querySelector('ComponentShare')||{}).textContent||'0'),a=parseFloat((c.querySelector('CreationCashSubstitute')||{}).textContent||'0');if(cd!=='159900'&&cd!=='申赎现金')cs.push({Code:cd,S:s,A:a,R:'us',N:cd});});
+  return {TradingDay:g('TradingDay'),NAV:g('NAV'),NAVperCU:g('NAVperCU'),CreationRedemptionUnit:g('CreationRedemptionUnit'),EstimateCashComponent:g('EstimateCashComponent'),CashComponent:g('CashComponent'),Components:cs};
+}
+function parseSSE(xml) {
+  const p=xml.querySelector('SSEPortfolioCompositionFile'); if(!p) return null;
+  const g=t=>(p.querySelector(t)||{}).textContent||'';
+  const cs=[]; p.querySelectorAll('Component').forEach(c=>{const cd=(c.querySelector('InstrumentID')||{}).textContent||'',nm=(c.querySelector('InstrumentName')||{}).textContent||'',s=parseFloat((c.querySelector('Quantity')||{}).textContent||'0'),a=parseFloat((c.querySelector('SubstitutionCashAmount')||{}).textContent||'0'),r=cd.startsWith('A')?'kr':'cn';cs.push({Code:cd,N:r==='kr'?nm:nm,S:s,A:a,R:r});});
+  return {TradingDay:g('TradingDay'),NAV:g('NAV'),NAVperCU:g('NAVperCU'),CreationRedemptionUnit:g('CreationRedemptionUnit'),EstimateCashComponent:g('EstimatedCashComponent'),CashComponent:g('PreCashComponent'),Components:cs};
+}
+function parseETFDef(xml) {
+  const p=xml.querySelector('ETFDefinition'); if(!p) return null;
+  const g=t=>(p.querySelector(t)||{}).textContent||'';
+  const cs=[]; (p.querySelectorAll('ComponentList Component')||[]).forEach(c=>{const cd=(c.querySelector('InstrumentID')||{}).textContent||'',nm=(c.querySelector('InstrumentName')||{}).textContent||'',s=parseFloat((c.querySelector('Quantity')||{}).textContent||'0'),a=parseFloat((c.querySelector('SubstitutionCashAmount')||{}).textContent||'0'),r=cd.startsWith('A')?'kr':'cn';cs.push({Code:cd,N:r==='kr'?nm:nm,S:s,A:a,R:r});});
+  return {TradingDay:g('TradingDay'),NAV:g('NAV'),NAVperCU:g('NAVperCU'),CreationRedemptionUnit:g('CreationRedemptionUnit'),EstimateCashComponent:g('EstimatedCashComponent'),CashComponent:g('PreCashComponent'),Components:cs};
+}
+
+function loadFile(file) {
+  const reader=new FileReader();
+  reader.onload=e=>{
+    try {
+      const d=parseXML(e.target.result), code='_loaded_'+Date.now();
+      FUNDS[code]={code:file.name.replace('.xml',''),name:file.name,manager:'加载文件',idxName:'--',indices:[{id:'tmp',yahoo:'^GSPC',label:'',short:''}],data:d};
+      buildColumn(code); renderFund(code);
+      document.getElementById('globalStatus').textContent='✅ 已加载: '+file.name;
+    } catch(err){alert('解析失败: '+err.message);}
+  };
+  reader.readAsText(file);
+}
+
+// ===== INIT =====
+loadIdxCache();
+Object.keys(FUNDS).forEach(k=>{try{const s=localStorage.getItem(HP+k);if(s)histories[k]=JSON.parse(s);else histories[k]=[];}catch(e){histories[k]=[];}});
+Object.keys(FUNDS).forEach(k=>{buildColumn(k); renderFund(k);});
+refreshAllIndex();
+setInterval(refreshAllIndex, 5*60*1000);
+</script>
+</body>
+</html>
